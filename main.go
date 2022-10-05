@@ -1,12 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"time"
 
-	"github.com/mxschmitt/playwright-go"
+	"github.com/playwright-community/playwright-go"
 )
 
 func main() {
@@ -14,29 +13,26 @@ func main() {
 }
 
 func clipCoupons() {
+	err := playwright.Install()
+	if err != nil {
+		log.Fatalf("could not install playwright: %v", err)
+	}
 	pw, err := playwright.Run()
 	if err != nil {
 		log.Fatalf("could not launch playwright: %v", err)
 	}
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+	browser, err := pw.WebKit.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(false),
 	})
 	if err != nil {
 		log.Fatalf("could not launch Chromium: %v", err)
 	}
 
-	device := pw.Devices["iPhone 11 Pro"]
-	context, err := browser.NewContext(playwright.BrowserNewContextOptions{
-		Locale:    playwright.String("en-US"),
-		UserAgent: playwright.String(device.UserAgent),
-	})
-	if err != nil {
-		log.Fatalf("could not create context: %v", err)
-	}
-	page, err := context.NewPage()
+	page, err := browser.NewPage()
 	if err != nil {
 		log.Fatalf("could not create page: %v", err)
 	}
+
 	if _, err = page.Goto("https://www.hy-vee.com/account/login.aspx?retUrl=/deals/coupons.aspx"); err != nil {
 		log.Fatalf("could not goto: %v", err)
 	}
@@ -48,48 +44,28 @@ func clipCoupons() {
 	page.Type("#password", password)
 
 	page.Click("#__next > main > section > section > form > button > span")
-
 	if _, err = page.Goto("https://www.hy-vee.com/deals/coupons.aspx", playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateNetworkidle,
 	}); err != nil {
 		log.Fatalf("could not goto: %v", err)
 	}
 
-	nextPage, err := page.QuerySelector("#divBottomNav > div.center > a")
-	if err != nil {
-		log.Fatalf("could not get load more button: %v", err)
-	}
-	if nextPage != nil {
-		nextPage, err = page.QuerySelector("#divBottomNav > div.center > a")
-		if err != nil {
-			log.Fatalf("could not get load more button: %v", err)
-		}
-		if nextPage != nil {
-			nextPage.Click()
-		}
-	}
-
-	coupons, err := page.QuerySelectorAll("[id$='_liOffer']")
+	coupons, err := page.QuerySelectorAll("#__next > div > div.sc-gsTEea.cgMhGp > main > div.coupon-grid-container > div.coupons-grid > div.coupons-column.coupon-grid > div > div > div")
 	if err != nil {
 		log.Fatalf("could not get entries: %v", err)
 	}
-	fmt.Println(len(coupons))
-	for i, coupon := range coupons {
-		titleElement, err := coupon.QuerySelector("div.product-desc.text-left > span")
-		if err != nil {
-			log.Fatalf("could not get title element: %v", err)
-		}
-		title, err := titleElement.TextContent()
-		if err != nil {
-			log.Fatalf("could not get text content: %v", err)
-		}
-		clipButton, err := coupon.QuerySelector("[id$='_divLoad'] > a")
+	log.Printf("Found %d coupons to clip\n", len(coupons))
+	clippedCount := 0
+	for _, coupon := range coupons {
+		clipButton, err := coupon.QuerySelector("button > span")
 		if err != nil {
 			log.Fatalf("could not get loadButton element: %v", err)
 		}
-		clipButton.Click()
-		fmt.Printf("%d: %s\n", i+1, title)
-		time.Sleep(500 * time.Millisecond)
+		err = clipButton.Click()
+		if err == nil {
+			clippedCount++
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	if err = browser.Close(); err != nil {
@@ -98,4 +74,5 @@ func clipCoupons() {
 	if err = pw.Stop(); err != nil {
 		log.Fatalf("could not stop Playwright: %v", err)
 	}
+	log.Printf("Succesfully clipped %d coupons\n", len(coupons))
 }
